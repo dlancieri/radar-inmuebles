@@ -16,11 +16,15 @@ def search_mercadolibre(query, limit=20):
     url = "https://api.mercadolibre.com/sites/MLU/search"
     params = {
         "q": query,
-        "category": "MLU1459",  # Inmuebles, a validar
         "limit": limit,
     }
 
-    response = requests.get(url, params=params, timeout=20)
+    headers = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "application/json",
+    }
+
+    response = requests.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
     return response.json().get("results", [])
 
