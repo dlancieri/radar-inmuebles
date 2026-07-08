@@ -1,4 +1,4 @@
-name: Radar Inmuebles
+name: Property Intelligence
 
 on:
   workflow_dispatch:
@@ -17,23 +17,19 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          playwright install chromium
+        run: pip install -r requirements.txt
 
       - name: Run radar
         run: python main.py
 
-      - name: Upload resultados
+      - name: Upload database
+        uses: actions/upload-artifact@v4
+        with:
+          name: properties-db
+          path: properties.db
+
+      - name: Upload oportunidades
         uses: actions/upload-artifact@v4
         with:
           name: oportunidades
           path: oportunidades.csv
-
-      - name: Upload debug
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug
-          path: |
-            pagina.html
-            busqueda.png
