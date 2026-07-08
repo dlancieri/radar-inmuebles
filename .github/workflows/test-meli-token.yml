@@ -1,0 +1,28 @@
+name: Test MELI Token
+
+on:
+  workflow_dispatch:
+    inputs:
+      meli_code:
+        description: "Código OAuth devuelto por Mercado Libre"
+        required: true
+
+jobs:
+  test-token:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install requests
+
+      - name: Exchange code for token
+        run: python test_token.py
+        env:
+          MELI_CLIENT_ID: ${{ secrets.MELI_CLIENT_ID }}
+          MELI_CLIENT_SECRET: ${{ secrets.MELI_CLIENT_SECRET }}
+          MELI_CODE: ${{ github.event.inputs.meli_code }}
