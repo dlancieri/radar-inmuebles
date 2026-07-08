@@ -1,9 +1,8 @@
 import re
-import requests
 import pandas as pd
-from bs4 import BeautifulSoup
-from urllib.parse import quote_plus
 from datetime import datetime
+from urllib.parse import quote_plus
+from playwright.sync_api import sync_playwright
 
 SEARCHES = [
     "casa venta montevideo reciclar",
@@ -14,95 +13,108 @@ SEARCHES = [
     "casa venta maldonado reciclar",
 ]
 
-KEYWORDS = {
-    "reciclar": 15,
-    "a reciclar": 20,
-    "ideal inversor": 15,
-    "inversor": 8,
-    "padrón único": 15,
-    "padron unico": 15,
-    "entrada independiente": 12,
-    "dos entradas": 12,
-    "fondo": 8,
-    "patio": 8,
-    "azotea": 10,
-    "varios ambientes": 10,
-    "local y vivienda": 15,
-    "gran terreno": 12,
-    "permite construir": 15,
-    "ph": 6,
-}
+KEYWORDS = [
+    "reciclar",
+    "a reciclar",
+    "ideal inversor",
+    "inversor",
+    "padrón único",
+    "padron unico",
+    "entrada independiente",
+    "dos entradas",
+    "fondo",
+    "patio",
+    "azotea",
+    "varios ambientes",
+    "local y vivienda",
+    "gran terreno",
+    "permite construir",
+]
 
-def get_html(url):
-    headers = {
-        "User-Agent": "Mozilla/5.0",
-        "Accept-Language": "es-UY,es;q=0.9,en;q=0.8",
-    }
-    r = requests.get(url, headers=headers, timeout=25)
-    print("URL:", url)
-    print("STATUS:", r.status_code)
-    if r.status_code != 200:
-        return None
-    return r.text
+def clean_link(link):
+    return link.split("#")[0].split("?")[0]
 
-def search_ml(query):
+def extract_links(page, query):
     url = f"https://listado.mercadolibre.com.uy/inmuebles/{quote_plus(query)}"
-    html = get_html(url)
-    if not html:
-        return []
+    print("Buscando:", url)
 
-    soup = BeautifulSoup(html, "html.parser")
+    page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    page.wait_for_timeout(3000)
+
+    links = page.locator("a").evaluate_all("""
+        elements => elements
+            .map(a => ({text: a.innerText, href: a.href}))
+            .filter(x => x.href && (
+                x.href.includes('inmuebles.mercadolibre.com.uy') ||
+                x.href.includes('articulo.mercadolibre.com.uy')
+            ))
+    """)
+
     results = []
+    seen = set()
 
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        text = a.get_text(" ", strip=True)
+    for item in links:
+        href = clean_link(item["href"])
+        text = (item["text"] or "").strip()
 
-        if (
-            "inmuebles.mercadolibre.com.uy" in href
-            or "articulo.mercadolibre.com.uy" in href
-        ):
-            if len(text) > 10:
-                results.append({
-                    "query": query,
-                    "titulo_listado": text[:180],
-                    "link": href.split("#")[0],
-                })
+        if href in seen:
+            continue
 
+        if len(text) < 10:
+            continue
+
+        seen.add(href)
+        results.append({
+            "query": query,
+            "titulo_listado": text[:180],
+            "link": href,
+        })
+
+    print("Links encontrados:", len(results))
     return results
 
 def extract_price(text):
     text = text.replace(".", "")
     match = re.search(r"U\$S\s*([0-9]+)", text)
-    if match:
-        return int(match.group(1))
-    return None
+    return int(match.group(1)) if match else None
 
 def extract_m2(text):
     patterns = [
         r"([0-9]+)\s*m²",
-        r"([0-9]+)\s*metros",
-        r"([0-9]+)\s*mt2",
         r"([0-9]+)\s*m2",
+        r"([0-9]+)\s*mt2",
+        r"([0-9]+)\s*metros",
     ]
-    for p in patterns:
-        match = re.search(p, text.lower())
+
+    for pattern in patterns:
+        match = re.search(pattern, text.lower())
         if match:
             return int(match.group(1))
+
     return None
 
-def score_property(title, description):
-    text = f"{title} {description}".lower()
+def score_property(title, text):
+    full_text = f"{title} {text}".lower()
     score = 0
     signals = []
 
-    for keyword, points in KEYWORDS.items():
-        if keyword in text:
-            score += points
-            signals.append(keyword)
+    for kw in KEYWORDS:
+        if kw in full_text:
+            score += 10
+            signals.append(kw)
 
-    m2 = extract_m2(text)
-    price = extract_price(text)
+    m2 = extract_m2(full_text)
+    price = extract_price(full_text)
+
+    usd_m2 = None
+    if price and m2:
+        usd_m2 = price / m2
+        if usd_m2 < 900:
+            score += 20
+            signals.append("USD/m² bajo")
+        elif usd_m2 < 1200:
+            score += 10
+            signals.append("USD/m² razonable")
 
     if m2:
         if m2 >= 120:
@@ -112,58 +124,56 @@ def score_property(title, description):
             score += 15
             signals.append("más de 160 m²")
 
-    if price and m2:
-        usd_m2 = price / m2
-        if usd_m2 < 900:
-            score += 20
-            signals.append("USD/m² bajo")
-        elif usd_m2 < 1200:
-            score += 10
-            signals.append("USD/m² razonable")
-    else:
-        usd_m2 = None
+    return min(score, 100), sorted(set(signals)), price, m2, usd_m2
 
-    if price and price > 220000:
-        score -= 20
-        signals.append("precio alto")
+def read_publication(page, link):
+    print("Leyendo:", link)
 
-    return min(max(score, 0), 100), signals, price, m2, usd_m2
+    try:
+        page.goto(link, wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(2500)
 
-def read_publication(link):
-    html = get_html(link)
-    if not html:
+        title = ""
+        if page.locator("h1").count() > 0:
+            title = page.locator("h1").first.inner_text().strip()
+
+        text = page.locator("body").inner_text(timeout=15000)
+
+        return title, text[:8000]
+
+    except Exception as e:
+        print("Error leyendo publicación:", e)
         return "", ""
-
-    soup = BeautifulSoup(html, "html.parser")
-
-    title = ""
-    h1 = soup.find("h1")
-    if h1:
-        title = h1.get_text(" ", strip=True)
-
-    text = soup.get_text(" ", strip=True)
-    description = text[:5000]
-
-    return title, description
 
 def main():
     rows = []
-    seen = set()
+    seen_links = set()
 
-    for query in SEARCHES:
-        for item in search_ml(query):
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+        )
+
+        all_links = []
+
+        for query in SEARCHES:
+            all_links.extend(extract_links(page, query))
+
+        for item in all_links:
             link = item["link"]
 
-            if link in seen:
+            if link in seen_links:
                 continue
-            seen.add(link)
 
-            title, description = read_publication(link)
+            seen_links.add(link)
+
+            title, text = read_publication(page, link)
 
             if not title:
                 title = item["titulo_listado"]
 
-            score, signals, price, m2, usd_m2 = score_property(title, description)
+            score, signals, price, m2, usd_m2 = score_property(title, text)
 
             if score < 30:
                 continue
@@ -171,17 +181,19 @@ def main():
             rows.append({
                 "fecha_detectada": datetime.now().strftime("%Y-%m-%d"),
                 "fuente": "Mercado Libre",
-                "query": query,
+                "query": item["query"],
                 "titulo": title,
                 "precio_usd": price,
                 "m2": m2,
                 "usd_m2": round(usd_m2, 2) if usd_m2 else None,
                 "score": score,
-                "senales_detectadas": ", ".join(sorted(set(signals))),
+                "senales_detectadas": ", ".join(signals),
                 "hipotesis_reconversion": "Revisar posible división en varias unidades",
                 "estado": "nuevo",
                 "link": link,
             })
+
+        browser.close()
 
     df = pd.DataFrame(rows)
 
@@ -191,10 +203,8 @@ def main():
 
     df = df.drop_duplicates(subset=["link"])
     df = df.sort_values(by="score", ascending=False)
-
     df.to_csv("oportunidades.csv", index=False)
 
-    print("\nTOP oportunidades:")
     print(df.head(20).to_string(index=False))
 
 if __name__ == "__main__":
