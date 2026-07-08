@@ -1,55 +1,49 @@
 KEYWORDS = {
-    "a reciclar": 15,
-    "reciclar": 12,
-    "ideal inversor": 10,
-    "inversor": 8,
-    "padrón único": 12,
-    "padron unico": 12,
-    "dos entradas": 10,
-    "entrada independiente": 10,
+    "reciclar": 15,
+    "a reciclar": 20,
+    "ideal inversor": 15,
+    "padrón único": 15,
+    "padron unico": 15,
+    "entrada independiente": 12,
+    "dos entradas": 12,
     "fondo": 8,
-    "patio": 6,
-    "azotea": 8,
-    "varios ambientes": 8,
-    "varios dormitorios": 8,
-    "local y vivienda": 12,
-    "propiedad horizontal": 6,
-    "permite construir": 12,
-    "gran terreno": 10,
+    "patio": 8,
+    "azotea": 10,
+    "varios ambientes": 10,
+    "local y vivienda": 15,
+    "gran terreno": 12,
+    "permite construir": 15,
 }
 
-def score_property(title, description, price_usd=None, m2=None):
-    text = f"{title or ''} {description or ''}".lower()
+
+def calculate_score(prop):
+    text = f"{prop.title} {prop.description}".lower()
     score = 0
     signals = []
-
-    if m2:
-        if m2 >= 120:
-            score += 20
-            signals.append("más de 120 m²")
-        if m2 >= 160:
-            score += 15
-            signals.append("más de 160 m²")
-
-    if price_usd and m2:
-        usd_m2 = price_usd / m2
-        if usd_m2 < 900:
-            score += 15
-            signals.append("USD/m² bajo")
-        elif usd_m2 < 1200:
-            score += 8
-            signals.append("USD/m² razonable")
-    else:
-        score -= 20
-        signals.append("faltan m² o precio")
 
     for keyword, points in KEYWORDS.items():
         if keyword in text:
             score += points
             signals.append(keyword)
 
-    if price_usd and price_usd > 180000:
-        score -= 15
-        signals.append("precio sobre rango objetivo")
+    if prop.area_m2 >= 120:
+        score += 20
+        signals.append("más de 120 m²")
 
-    return min(score, 100), list(set(signals))
+    if prop.area_m2 >= 160:
+        score += 15
+        signals.append("más de 160 m²")
+
+    if prop.price_usd and prop.area_m2:
+        usd_m2 = prop.price_usd / prop.area_m2
+
+        if usd_m2 < 900:
+            score += 20
+            signals.append("USD/m² bajo")
+        elif usd_m2 < 1200:
+            score += 10
+            signals.append("USD/m² razonable")
+    else:
+        usd_m2 = None
+
+    return min(score, 100), signals, usd_m2
