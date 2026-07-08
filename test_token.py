@@ -15,7 +15,7 @@ data = {
     "client_id": client_id,
     "client_secret": client_secret,
     "code": code,
-    "redirect_uri": "https://localhost",
+    "redirect_uri": "https://radar",
 }
 
 response = requests.post(url, data=data, timeout=20)
