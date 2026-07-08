@@ -39,6 +39,13 @@ def extract_links(page, query):
     print("Buscando:", url)
 
     page.goto(url, wait_until="domcontentloaded", timeout=60000)
+    page.screenshot(path="busqueda.png", full_page=True)
+
+    print("Título:", page.title())
+    print("URL final:", page.url)
+
+    with open("pagina.html", "w", encoding="utf-8") as f:
+        f.write(page.content())
     page.wait_for_timeout(3000)
 
     links = page.locator("a").evaluate_all("""
