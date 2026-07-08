@@ -1,5 +1,8 @@
 name: Radar Inmuebles
 
+env:
+  MELI_ACCESS_TOKEN: ${{ secrets.MELI_ACCESS_TOKEN }}
+
 on:
   schedule:
     - cron: "0 10 * * *"
