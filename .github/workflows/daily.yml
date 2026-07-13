@@ -1,12 +1,10 @@
-name: Property Intelligence
+name: Test InfoCasas
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 10 * * *"
 
 jobs:
-  run-radar:
+  test-infocasas:
     runs-on: ubuntu-latest
 
     steps:
@@ -17,19 +15,17 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
 
-      - name: Run radar
+      - name: Run test
         run: python main.py
 
-      - name: Upload database
+      - name: Upload debug
         uses: actions/upload-artifact@v4
         with:
-          name: properties-db
-          path: properties.db
-
-      - name: Upload oportunidades
-        uses: actions/upload-artifact@v4
-        with:
-          name: oportunidades
-          path: oportunidades.csv
+          name: infocasas-debug
+          path: |
+            infocasas.png
+            infocasas.html
