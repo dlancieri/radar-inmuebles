@@ -1,31 +1,32 @@
-name: Test InfoCasas
+name: InfoCasas MVP
 
 on:
   workflow_dispatch:
 
 jobs:
-  test-infocasas:
+  extract-properties:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Configurar Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install dependencies
+      - name: Instalar dependencias
         run: |
           pip install -r requirements.txt
-          playwright install chromium
+          playwright install --with-deps chromium
 
-      - name: Run test
+      - name: Extraer propiedades
         run: python main.py
 
-      - name: Upload debug
+      - name: Subir CSV
         uses: actions/upload-artifact@v4
         with:
-          name: infocasas-debug
-          path: |
-            infocasas.png
-            infocasas.html
+          name: propiedades-infocasas
+          path: propiedades_infocasas.csv
+          if-no-files-found: error
