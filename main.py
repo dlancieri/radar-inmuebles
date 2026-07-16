@@ -20,35 +20,80 @@ MAX_PRICE_USD = 250_000
 MIN_AREA_M2 = 90
 
 
-KEYWORD_RULES = {
-    "padron unico": 25,
-    "mismo padron": 25,
-    "varias unidades": 25,
-    "varias viviendas": 25,
-    "dos casas": 25,
-    "2 casas": 25,
-    "tres casas": 30,
-    "3 casas": 30,
-    "apartamento independiente": 20,
-    "entrada independiente": 15,
-    "entradas independientes": 18,
-    "ideal inversor": 18,
-    "oportunidad inversor": 18,
-    "renta": 10,
+RECONVERSION_RULES = {
+    "posibilidad de hacer apartamentos": 35,
+    "posibilidad de apartamentos": 35,
+    "varias unidades": 30,
+    "generar varias unidades": 30,
+    "mas de una renta": 25,
+    "más de una renta": 25,
+
+    "doble acceso": 22,
+    "dos accesos": 22,
+    "accesos independientes": 22,
+    "entrada independiente": 18,
+    "entradas independientes": 20,
+    "pasaje lateral": 18,
+    "corredor lateral": 18,
+    "acceso lateral": 18,
+    "esquina": 15,
+
+    "padron unico": 18,
+    "mismo padron": 15,
+    "gran terreno": 15,
+    "fondo grande": 15,
+    "terreno de": 6,
+
     "para reciclar": 15,
     "a reciclar": 15,
+    "a refaccionar": 15,
     "reciclaje": 12,
-    "propiedad horizontal": 8,
-    "azotea": 7,
-    "patio": 6,
-    "fondo": 7,
-    "galpon": 8,
-    "local": 6,
-    "varios ambientes": 10,
-    "gran terreno": 10,
-    "posibilidad de construir": 15,
+    "requiere mejoras": 8,
+
+    "varios ambientes": 12,
+    "espacios amplios": 10,
+    "techos altos": 10,
+    "altura de techos": 8,
+    "dos plantas": 8,
+    "planta alta": 5,
+    "planta baja": 5,
+
+    "local comercial": 8,
+    "galpon": 6,
+    "depósito": 5,
+    "deposito": 5,
+    "azotea transitable": 6,
 }
 
+IMMEDIATE_RENT_RULES = {
+    "dos casas": 30,
+    "2 casas": 30,
+    "tres casas": 35,
+    "3 casas": 35,
+    "varias viviendas": 30,
+    "apartamento independiente": 25,
+    "apto independiente": 25,
+    "segunda vivienda": 25,
+    "segunda construccion": 18,
+    "segunda construcción": 18,
+    "tercera construccion": 20,
+    "tercera construcción": 20,
+    "ya alquilado": 15,
+    "con renta": 12,
+}
+
+PENALTY_RULES = {
+    "nuda propiedad": -70,
+    "usufructo": -50,
+    "derechos posesorios": -40,
+    "ocupada": -25,
+    "ocupado": -25,
+    "solo contado": -8,
+    "proteccion patrimonial": -8,
+    "protección patrimonial": -8,
+    "propiedad horizontal": -12,
+    "ph": -5,
+}
 
 TARGET_NEIGHBORHOODS = {
     "centro": 12,
@@ -158,15 +203,19 @@ def extract_neighborhood(location_text: str) -> str:
     return ""
 
 
-def calculate_score(prop: dict) -> tuple[int, list[str]]:
-    score = 0
+def calculate_score(prop: dict) -> tuple[int, int, list[str]]:
+    reconversion_score = 0
+    immediate_rent_score = 0
     signals: list[str] = []
 
     title = prop.get("titulo") or ""
     description = prop.get("descripcion_tarjeta") or ""
+    full_card = prop.get("texto_tarjeta") or ""
     neighborhood = prop.get("barrio") or ""
 
-    text = normalize_text(f"{title} {description}")
+    text = normalize_text(
+        f"{title} {description} {full_card}"
+    )
     normalized_neighborhood = normalize_text(neighborhood)
 
     price = prop.get("precio_usd")
@@ -175,85 +224,108 @@ def calculate_score(prop: dict) -> tuple[int, list[str]]:
     bathrooms = prop.get("banos")
     usd_m2 = prop.get("usd_m2")
 
-    # Superficie
+    # Superficie: ayuda, pero no debe dominar.
     if area:
-        if area >= 250:
-            score += 28
-            signals.append("250 m² o más")
+        if area >= 300:
+            reconversion_score += 24
+            signals.append("300 m² o más")
+        elif area >= 220:
+            reconversion_score += 20
+            signals.append("220 m² o más")
         elif area >= 180:
-            score += 23
+            reconversion_score += 16
             signals.append("180 m² o más")
         elif area >= 150:
-            score += 18
+            reconversion_score += 12
             signals.append("150 m² o más")
         elif area >= 120:
-            score += 12
+            reconversion_score += 7
             signals.append("120 m² o más")
 
-    # Precio por metro cuadrado
+    # USD/m².
     if usd_m2:
-        if usd_m2 < 700:
-            score += 25
-            signals.append("menos de USD 700/m²")
-        elif usd_m2 < 900:
-            score += 20
-            signals.append("menos de USD 900/m²")
-        elif usd_m2 < 1_100:
-            score += 12
-            signals.append("menos de USD 1.100/m²")
+        if usd_m2 < 650:
+            reconversion_score += 20
+            signals.append("menos de USD 650/m²")
+        elif usd_m2 < 850:
+            reconversion_score += 15
+            signals.append("menos de USD 850/m²")
+        elif usd_m2 < 1050:
+            reconversion_score += 8
+            signals.append("menos de USD 1.050/m²")
 
-    # Dormitorios y baños
+    # Distribución existente.
     if bedrooms:
         if bedrooms >= 6:
-            score += 18
+            reconversion_score += 14
             signals.append("6 dormitorios o más")
         elif bedrooms >= 4:
-            score += 12
+            reconversion_score += 9
             signals.append("4 dormitorios o más")
-        elif bedrooms >= 3:
-            score += 5
-            signals.append("3 dormitorios")
 
     if bathrooms:
-        if bathrooms >= 3:
-            score += 12
-            signals.append("3 baños o más")
+        if bathrooms >= 4:
+            reconversion_score += 16
+            signals.append("4 baños o más")
+        elif bathrooms >= 3:
+            reconversion_score += 11
+            signals.append("3 baños")
         elif bathrooms >= 2:
-            score += 7
+            reconversion_score += 6
             signals.append("2 baños")
 
-    # Palabras clave
-    for keyword, points in KEYWORD_RULES.items():
+    # Señales de reconversión.
+    for keyword, points in RECONVERSION_RULES.items():
         if keyword in text:
-            score += points
+            reconversion_score += points
             signals.append(keyword)
 
-    # Barrio
+    # Señales de renta ya existente.
+    for keyword, points in IMMEDIATE_RENT_RULES.items():
+        if keyword in text:
+            immediate_rent_score += points
+            signals.append(f"renta inmediata: {keyword}")
+
+    # Penalizaciones.
+    for keyword, points in PENALTY_RULES.items():
+        if keyword in text:
+            reconversion_score += points
+            immediate_rent_score += points
+            signals.append(f"penalización: {keyword}")
+
+    # Zonas preferidas.
     for barrio, points in TARGET_NEIGHBORHOODS.items():
         if barrio in normalized_neighborhood:
-            score += points
+            reconversion_score += points
+            immediate_rent_score += points // 2
             signals.append(f"zona objetivo: {neighborhood}")
             break
 
-    # Penalizaciones
-    if price and price > MAX_PRICE_USD:
-        score -= 25
-        signals.append("sobre precio máximo")
+    # Precio absoluto.
+    if price:
+        if price > 250_000:
+            reconversion_score -= 25
+            immediate_rent_score -= 20
+            signals.append("precio superior a USD 250.000")
+        elif price > 220_000:
+            reconversion_score -= 15
+            signals.append("precio superior a USD 220.000")
+        elif price <= 150_000:
+            reconversion_score += 8
+            signals.append("precio hasta USD 150.000")
+    else:
+        reconversion_score -= 15
+        immediate_rent_score -= 15
 
-    if area and area < MIN_AREA_M2:
-        score -= 20
-        signals.append("superficie reducida")
-
-    # Sin datos suficientes
     if not area:
-        score -= 15
-        signals.append("sin superficie")
+        reconversion_score -= 15
+        signals.append("sin superficie confiable")
 
-    if not price:
-        score -= 15
-        signals.append("sin precio USD")
-
-    return max(0, min(score, 100)), sorted(set(signals))
+    return (
+        max(0, min(reconversion_score, 100)),
+        max(0, min(immediate_rent_score, 100)),
+        sorted(set(signals)),
+    )
 
 
 def extract_property(
@@ -309,10 +381,14 @@ def extract_property(
     area_m2 = extract_first_number(
         full_text,
         [
+            r"superficie cubierta(?: de)?\s*(\d+)\s*m",
+            r"area total construida:\s*(\d+)",
+            r"área total construida:\s*(\d+)",
+            r"(\d+)\s*m²\s*construidos",
+            r"(\d+)\s*m2\s*construidos",
+            r"(\d+)\s*metros\s*construidos",
             r"(\d+)\s*m²",
             r"(\d+)\s*m2",
-            r"(\d+)\s*mt2",
-            r"(\d+)\s*metros cuadrados",
         ],
     )
 
@@ -355,9 +431,10 @@ def extract_property(
         "texto_tarjeta": " ".join(full_text.split()),
     }
 
-    score, signals = calculate_score(prop)
+    reconversion_score, immediate_rent_score, signals = calculate_score(prop)
 
-    prop["score"] = score
+    prop["score_reconversion"] = reconversion_score
+    prop["score_renta_inmediata"] = immediate_rent_score
     prop["senales"] = " | ".join(signals)
 
     return prop
@@ -455,19 +532,12 @@ def main() -> None:
 
     df = df.drop_duplicates(subset=["external_id"])
 
-    # Archivo completo
-    df = df.sort_values(
-        by=["score", "usd_m2"],
-        ascending=[False, True],
-        na_position="last",
-    )
-
+    # Base completa.
     df.to_csv(
         "propiedades_infocasas.csv",
         index=False,
     )
-
-    # Filtro razonable para el MVP
+    
     candidates = df[
         (df["precio_usd"].between(
             MIN_PRICE_USD,
@@ -479,30 +549,42 @@ def main() -> None:
             | (df["area_m2"] >= MIN_AREA_M2)
         )
     ].copy()
-
-    top = candidates.head(30)
-
-    top.to_csv(
-        "top_oportunidades.csv",
+    
+    top_reconversion = candidates.sort_values(
+        by=["score_reconversion", "usd_m2"],
+        ascending=[False, True],
+        na_position="last",
+    ).head(30)
+    
+    top_renta = candidates.sort_values(
+        by=["score_renta_inmediata", "score_reconversion"],
+        ascending=[False, False],
+    ).head(30)
+    
+    top_reconversion.to_csv(
+        "top_reconversion.csv",
         index=False,
     )
-
+    
+    top_renta.to_csv(
+        "top_renta_inmediata.csv",
+        index=False,
+    )
+    
     print("\nRESUMEN")
     print(f"Propiedades únicas: {len(df)}")
-    print(f"Candidatas dentro del rango: {len(candidates)}")
-    print(f"TOP exportadas: {len(top)}")
-
-    print("\nTOP 15")
+    print(f"Candidatas: {len(candidates)}")
+    
+    print("\nTOP RECONVERSIÓN")
     print(
-        top[
+        top_reconversion[
             [
-                "score",
+                "score_reconversion",
+                "score_renta_inmediata",
                 "titulo",
                 "precio_usd",
                 "area_m2",
                 "usd_m2",
-                "dormitorios",
-                "banos",
                 "barrio",
                 "senales",
                 "link",
@@ -511,7 +593,6 @@ def main() -> None:
         .head(15)
         .to_string(index=False)
     )
-
 
 if __name__ == "__main__":
     main()
