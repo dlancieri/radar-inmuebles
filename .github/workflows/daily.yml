@@ -1,11 +1,12 @@
-name: InfoCasas MVP
+name: InfoCasas Opportunity MVP
 
 on:
   workflow_dispatch:
 
 jobs:
-  extract-properties:
+  extract-and-rank:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Descargar repositorio
@@ -21,12 +22,14 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
-      - name: Extraer propiedades
+      - name: Extraer y puntuar propiedades
         run: python main.py
 
-      - name: Subir CSV
+      - name: Subir resultados
         uses: actions/upload-artifact@v4
         with:
-          name: propiedades-infocasas
-          path: propiedades_infocasas.csv
+          name: resultados-infocasas
+          path: |
+            propiedades_infocasas.csv
+            top_oportunidades.csv
           if-no-files-found: error
