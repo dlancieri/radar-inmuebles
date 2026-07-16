@@ -31,5 +31,6 @@ jobs:
           name: resultados-infocasas
           path: |
             propiedades_infocasas.csv
-            top_oportunidades.csv
+            top_reconversion.csv
+            top_renta_inmediata.csv
           if-no-files-found: error
